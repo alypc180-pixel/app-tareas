@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Control de Tareas - App</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <style>
+    :root{
+      --bg:#0b1020; --card:#121833; --muted:#9aa4c4; --acc:#4f7cff; --acc2:#23c483; --danger:#ff6b6b;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:linear-gradient(180deg,#0b1020,#0e1430 50%,#0b1020);font-family:Inter,system-ui,Segoe UI,Roboto,Arial;color:#e7ebff}
+    header{position:sticky;top:0;background:rgba(11,16,32,.8);backdrop-filter:blur(10px);border-bottom:1px solid rgba(255,255,255,.06);z-index:50}
+    .wrap{max-width:1100px;margin:0 auto;padding:16px}
+    h1{margin:0;font-size:clamp(18px,2.2vw,24px);display:flex;align-items:center;gap:10px}
+    main{max-width:1100px;margin:24px auto;padding:0 16px;display:grid;grid-template-columns:1fr;gap:16px}
+    .grid{display:grid;grid-template-columns:1fr;gap:16px}
+    @media(min-width:960px){.grid{grid-template-columns:380px 1fr}}
+    .card{background:var(--card);border:1px solid rgba(255,255,255,.06);border-radius:18px;padding:16px;box-shadow:0 10px 30px rgba(0,0,0,.25)}
+    .muted{color:var(--muted);font-size:.95rem}
+    .row{display:grid;gap:10px;margin:10px 0}
+    label{font-weight:600;}
+    input, textarea, select{width:100%;background:#0e1533;color:#e7ebff;border:1px solid rgba(255,255,255,.12);border-radius:12px;padding:10px 12px;font:inherit;outline:none}
+    textarea{resize:vertical;min-height:84px}
+    button{appearance:none;border:none;background:var(--acc);color:white;padding:10px 14px;border-radius:12px;font-weight:700;cursor:pointer;transition:.2s;box-shadow:0 6px 20px rgba(79,124,255,.35)}
+    button:hover{transform:translateY(-1px)}
+    button.secondary{background:#1a244d}
+    button.success{background:var(--acc2)}
+    button.danger{background:var(--danger)}
+    .toolbar{display:flex;gap:8px;flex-wrap:wrap}
+    .map{height:180px;border-radius:14px;overflow:hidden;border:1px solid rgba(255,255,255,.08)}
+    .task{display:grid;gap:10px}
+    .task .head{display:flex;gap:10px;align-items:center;justify-content:space-between}
+    .pill{padding:4px 10px;border-radius:999px;background:#192048;color:#cbd5ff;font-size:.8rem;border:1px solid rgba(255,255,255,.08)}
+    .list{display:grid;gap:14px}
+    .photo{max-width:260px;border-radius:12px;border:1px solid rgba(255,255,255,.08)}
+    .hidden{display:none}
+    .auth{display:grid;grid-template-columns:1fr;gap:16px}
+    .divider{height:1px;background:rgba(255,255,255,.08);margin:10px 0}
+    .right{justify-self:end}
+    .tag{font-size:.8rem;color:#c8d3ff}
+    .foot{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+    .k{color:#9fb0ff}
+    .small{font-size:.9rem}
+  </style>
+</head>
+<body>
+  <header>
+    <div class="wrap">
+      <h1>🗂️ Control de Tareas <span class="muted">— GPS, fotos y Excel</span></h1>
+    </div>
+  </header>
+
+  <main>
+    <section class="grid">
+      <!-- Columna izquierda: Autenticación y formulario -->
+      <div class="card" id="authCard">
+        <h2>Acceso</h2>
+        <p class="muted small">Solo usuarios autorizados. El admin aprueba y asigna roles.</p>
+        <div class="auth" id="authForms">
+          <div>
+            <h3>Ingresar</h3>
+            <div class="row"><label>Email</label><input type="email" id="loginEmail" placeholder="usuario@correo.com" /></div>
+            <div class="row"><label>Contraseña</label><input type="password" id="loginPass" placeholder="********" /></div>
+            <div class="toolbar">
+              <button id="btnLogin">Entrar</button>
+              <button class="secondary" id="btnLogout" disabled>Salir</button>
+            </div>
+          </div>
+          <div class="divider"></div>
+          <div>
+            <h3>Registrarse</h3>
+            <div class="row"><label>Email</label><input type="email" id="regEmail" placeholder="nuevo@correo.com" /></div>
+            <div class="row"><label>Contraseña</label><input type="password" id="regPass" placeholder="Mínimo 6 caracteres" /></div>
+            <button id="btnRegister">Crear cuenta</button>
+            <p class="muted small">Tras registrarte, el admin debe aprobarte asignando el rol <b>contributor</b>.</p>
+          </div>
+        </div>
+        <div id="whoami" class="muted small"></div>
+      </div>
+
+      <div class="card" id="formCard">
+        <h2>Nueva tarea</h2>
+        <div class="row"><label>Título / Nombre</label><input id="tTitle" placeholder="Ej: Inspección poste #14" /></div>
+        <div class="row"><label>Número de tarea</label><input id="tNumber" type="number" placeholder="Ej: 14" /></div>
+        <div class="row"><label>Observaciones / Deficiencias</label><textarea id="tNotes" placeholder="Describe lo observado en el punto"></textarea></div>
+
+        <div class="row">
+          <div class="toolbar">
+            <button id="btnLoc">📍 Obtener ubicación</button>
+            <button class="secondary" id="btnClearLoc">Limpiar ubicación</button>
+          </div>
+          <div id="locInfo" class="muted small"></div>
+          <div id="mapPreview" class="map hidden"></div>
+        </div>
+
+        <div class="row">
+          <label>Foto (opcional)</label>
+          <input type="file" id="tPhoto" accept="image/*" capture="environment" />
+          <img id="previewImg" class="photo hidden" />
+        </div>
+        <div class="toolbar">
+          <button id="btnSave" class="success">💾 Guardar tarea</button>
+          <span id="saveMsg" class="muted"></span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Columna derecha: listado y exportación -->
+    <section class="card">
+      <div class="head" style="display:flex;justify-content:space-between;align-items:center">
+        <h2 style="margin:0">Tareas</h2>
+        <div class="toolbar">
+          <button id="btnRefresh" class="secondary">Actualizar</button>
+          <button id="btnExport">⬇️ Exportar Excel</button>
+        </div>
+      </div>
+      <p class="muted small" id="scope"></p>
+      <div class="list" id="taskList"></div>
+    </section>
+  </main>
+
+  <!-- Firebase SDKs (compat para simplicidad) -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-storage-compat.js"></script>
+  <!-- Leaflet -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <!-- SheetJS para Excel -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+  <script>
+    // 1) Configura tu Firebase aquí
+    const firebaseConfig = {
+      apiKey: "TU_API_KEY",
+      authDomain: "TU_PROYECTO.firebaseapp.com",
+      projectId: "TU_PROYECTO",
+      storageBucket: "TU_PROYECTO.appspot.com",
+      messagingSenderId: "",
+      appId: ""
+    };
+    firebase.initializeApp(firebaseConfig);
+    const auth = firebase.auth();
+    const db = firebase.firestore();
+    const storage = firebase.storage();
+
+    // Estado global
+    let currentUser = null;
+    let currentRole = null; // 'admin' | 'contributor' | null
+    let currentCoords = null; // [lat, lon]
+    let currentAddress = null;
+    let currentPhotoFile = null; let currentPhotoURL = null;
+    let mapPrev = null; let mapPrevInited = false;
+
+    // Utilidad: leer rol desde /roles/{uid}
+    async function fetchRole(uid){
+      const ref = db.collection('roles').doc(uid);
+      const snap = await ref.get();
+      return snap.exists ? snap.data().role : null;
+    }
+
+    // UI helpers
+    function $(id){ return document.getElementById(id); }
+    function toast(el, msg){ el.textContent = msg; setTimeout(()=> el.textContent = '', 3000); }
+
+    // Auth listeners
+    auth.onAuthStateChanged(async (user)=>{
+      currentUser = user;
+      if(user){
+        currentRole = await fetchRole(user.uid);
+        $('whoami').innerHTML = `Conectado como <span class="k">${user.email}</span> · rol: <b>${currentRole || 'pendiente'}</b>`;
+        $('btnLogout').disabled = false;
+        loadTasks();
+      }else{
+        currentRole = null;
+        $('whoami').textContent = '';
+        $('btnLogout').disabled = true;
+        $('taskList').innerHTML = '';
+      }
+      updateScopeLabel();
+    });
+
+    function updateScopeLabel(){
+      if(!currentUser){ $('scope').textContent = 'Inicia sesión para ver tus tareas.'; return; }
+      if(currentRole==='admin'){
+        $('scope').textContent = 'Viendo TODAS las tareas (admin).';
+      }else if(currentRole==='contributor'){
+        $('scope').textContent = 'Viendo solo tus tareas (contributor).';
+      }else{
+        $('scope').textContent = 'Tu cuenta está pendiente de aprobación por el admin.';
+      }
+    }
+
+    // Login / Logout / Register
+    $('btnLogin').onclick = async ()=>{
+      try{ await auth.signInWithEmailAndPassword($('loginEmail').value, $('loginPass').value); }
+      catch(e){ alert(e.message); }
+    };
+    $('btnLogout').onclick = async ()=>{ await auth.signOut(); };
+    $('btnRegister').onclick = async ()=>{
+      try{
+        await auth.createUserWithEmailAndPassword($('regEmail').value, $('regPass').value);
+        alert('Cuenta creada. Espera aprobación del admin para asignarte rol.');
+      }catch(e){ alert(e.message); }
+    };
+
+    // Ubicación + mapa + dirección con Nominatim
+    $('btnLoc').onclick = ()=>{
+      if(!navigator.geolocation){ alert('Geolocalización no soportada.'); return; }
+      navigator.geolocation.getCurrentPosition(async (pos)=>{
+        const lat = pos.coords.latitude, lon = pos.coords.longitude;
+        currentCoords = [lat, lon];
+        $('locInfo').innerHTML = `<b>Coordenadas:</b> ${lat.toFixed(6)}, ${lon.toFixed(6)} <br>Obteniendo dirección...`;
+        try{
+          const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}`;
+          const res = await fetch(url, { headers: { 'Accept':'application/json' } });
+          const data = await res.json();
+          currentAddress = data.display_name || null;
+        }catch(err){ currentAddress = null; }
+        $('locInfo').innerHTML = `<b>Coordenadas:</b> ${lat.toFixed(6)}, ${lon.toFixed(6)}<br><b>Dirección:</b> ${currentAddress || 'No disponible'}`;
+        // Mapa previo
+        $('mapPreview').classList.remove('hidden');
+        if(!mapPrevInited){
+          mapPrev = L.map('mapPreview').setView([lat, lon], 16);
+          L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom:19 }).addTo(mapPrev);
+          L.marker([lat, lon]).addTo(mapPrev);
+          mapPrevInited = true;
+        }else{
+          mapPrev.setView([lat, lon], 16);
+          L.marker([lat, lon]).addTo(mapPrev);
+        }
+      }, (err)=> alert('No se pudo obtener ubicación: '+err.message));
+    };
+    $('btnClearLoc').onclick = ()=>{
+      currentCoords = null; currentAddress = null;
+      $('locInfo').textContent=''; $('mapPreview').classList.add('hidden');
+      if(mapPrev){ mapPrev.remove(); mapPrev=null; mapPrevInited=false; }
+    };
+
+    // Foto
+    $('tPhoto').addEventListener('change', (e)=>{
+      currentPhotoFile = e.target.files[0] || null;
+      if(currentPhotoFile){
+        const reader = new FileReader();
+        reader.onload = ()=>{ $('previewImg').src = reader.result; $('previewImg').classList.remove('hidden'); };
+        reader.readAsDataURL(currentPhotoFile);
+      }else{
+        $('previewImg').classList.add('hidden');
+      }
+    });
+
+    // Guardar tarea
+    $('btnSave').onclick = async ()=>{
+      if(!currentUser){ alert('Inicia sesión.'); return; }
+      if(currentRole!=='admin' && currentRole!=='contributor'){ alert('Tu cuenta aún no está aprobada.'); return; }
+      const title = $('tTitle').value.trim();
+      const number = parseInt($('tNumber').value,10);
+      const notes = $('tNotes').value.trim();
+      if(!title){ alert('Título requerido'); return; }
+      if(!currentCoords){ alert('Obtén la ubicación'); return; }
+
+      $('btnSave').disabled = true;
+
+      // Subir foto si existe
+      let photoURL = null;
+      try{
+        if(currentPhotoFile){
+          const path = `images/${currentUser.uid}/${Date.now()}_${currentPhotoFile.name}`;
+          const ref = storage.ref().child(path);
+          await ref.put(currentPhotoFile);
+          photoURL = await ref.getDownloadURL();
+        }
+        const doc = {
+          title, number: isNaN(number)? null:number, notes,
+          coords: currentCoords, address: currentAddress||null,
+          photoURL: photoURL||null,
+          owner: currentUser.uid,
+          ownerEmail: currentUser.email,
+          createdAt: firebase.firestore.FieldValue.serverTimestamp()
+        };
+        await db.collection('tasks').add(doc);
+        toast($('saveMsg'),'Guardado ✅');
+        clearForm();
+        loadTasks();
+      }catch(e){ alert('Error al guardar: '+e.message); }
+      finally{ $('btnSave').disabled=false; }
+    }
+
+    function clearForm(){
+      $('tTitle').value=''; $('tNumber').value=''; $('tNotes').value='';
+      $('tPhoto').value=''; $('previewImg').classList.add('hidden');
+      $('btnClearLoc').click(); currentPhotoFile=null; currentPhotoURL=null;
+    }
+
+    // Cargar tareas según rol
+    async function loadTasks(){
+      if(!currentUser) return;
+      let q = db.collection('tasks').orderBy('createdAt','desc').limit(200);
+      if(currentRole==='contributor'){ q = q.where('owner','==', currentUser.uid); }
+      const snap = await q.get();
+      const list = $('taskList'); list.innerHTML='';
+      snap.forEach(doc=>{
+        const t = doc.data(); const id = doc.id;
+        const el = document.createElement('div');
+        el.className='task card';
+        el.innerHTML = `
+          <div class="head">
+            <div>
+              <div class="tag">${t.createdAt?.toDate ? t.createdAt.toDate().toLocaleString() : ''}</div>
+              <h3 style="margin:4px 0 0">${t.title} ${t.number!=null?`<span class='pill'>#${t.number}</span>`:''}</h3>
+            </div>
+            <div class="pill">${t.ownerEmail||''}</div>
+          </div>
+          <div class="row"><span class="muted"><b>Dirección:</b> ${t.address||'—'}</span></div>
+          <div class="row"><span class="muted"><b>Coords:</b> ${t.coords?`${t.coords[0].toFixed(6)}, ${t.coords[1].toFixed(6)}`:'—'}</span></div>
+          <div class="row"><div id="map_${id}" class="map"></div></div>
+          ${t.photoURL?`<div class='row'><img src='${t.photoURL}' class='photo' loading='lazy'/></div>`:''}
+          ${t.notes?`<div class='row'><span class='muted'><b>Observaciones:</b> ${t.notes}</span></div>`:''}
+          <div class="foot">
+            ${currentRole==='admin'?`<button class='danger' onclick="deleteTask('${id}')">Eliminar</button>`:''}
+          </div>
+        `;
+        list.appendChild(el);
+        // Mini mapa
+        if(t.coords){
+          const m = L.map(`map_${id}`, { attributionControl:false, zoomControl:false }).setView(t.coords, 16);
+          L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom:19 }).addTo(m);
+          L.marker(t.coords).addTo(m);
+        }
+      });
+    }
+
+    // Eliminar (solo admin)
+    async function deleteTask(id){
+      if(!confirm('¿Eliminar tarea?')) return;
+      try{ await db.collection('tasks').doc(id).delete(); loadTasks(); }
+      catch(e){ alert('No autorizado o error: '+e.message); }
+    }
+
+    $('btnRefresh').onclick = loadTasks;
+
+    // Exportar a Excel (sin fotos)
+    $('btnExport').onclick = async ()=>{
+      if(!currentUser){ alert('Inicia sesión.'); return; }
+      let q = db.collection('tasks').orderBy('createdAt','desc');
+      if(currentRole==='contributor') q = q.where('owner','==', currentUser.uid);
+      const snap = await q.get();
+      const rows = [];
+      snap.forEach(d=>{
+        const t = d.data();
+        rows.push({
+          ID: d.id,
+          Fecha: t.createdAt?.toDate ? t.createdAt.toDate().toISOString() : '',
+          Titulo: t.title||'',
+          Numero: t.number||'',
+          Observaciones: t.notes||'',
+          Latitud: t.coords? t.coords[0]: '',
+          Longitud: t.coords? t.coords[1]: '',
+          Direccion: t.address||'',
+          FotoURL: t.photoURL||'',
+          Propietario: t.ownerEmail||''
+        });
+      });
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.json_to_sheet(rows);
+      XLSX.utils.book_append_sheet(wb, ws, 'Tareas');
+      XLSX.writeFile(wb, 'tareas_export.xlsx');
+    }
+  </script>
+</body>
+</html>
